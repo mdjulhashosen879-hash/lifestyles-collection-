@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lifestyle Collection Admin</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;padding:18px;color:#222}
+    main{max-width:650px;margin:auto}
+    section{background:white;padding:18px;margin:14px 0;border-radius:12px}
+    input,button{box-sizing:border-box;width:100%;padding:12px;margin:7px 0;border:1px solid #ccc;border-radius:7px}
+    button{background:#146c43;color:white;border:0;font-weight:bold}
+    .delete{background:#b42318}
+    .item{border-top:1px solid #ddd;padding:12px 0}
+    img{max-width:100px;display:block}
+    #status{white-space:pre-wrap}
+  </style>
+</head>
+<body>
+<main>
+  <h2>Lifestyle Collection — Admin</h2>
+  <p id="status">Supabase সেটআপ বাকি।</p>
+
+  <section id="loginBox">
+    <h3>Admin Login</h3>
+    <input id="email" type="email" placeholder="Admin email">
+    <input id="password" type="password" placeholder="Password">
+    <button id="login">Login</button>
+  </section>
+
+  <section id="panel" hidden>
+    <h3>পণ্য যোগ করো</h3>
+    <input id="name" placeholder="পণ্যের নাম">
+    <input id="price" type="number" min="0" step="0.01" placeholder="দাম (৳)">
+    <input id="image" type="url" placeholder="ছবির URL">
+    <input id="category" placeholder="ক্যাটাগরি">
+    <input id="description" placeholder="পণ্যের বিবরণ">
+    <button id="add">পণ্য যোগ করো</button>
+    <button id="logout">Logout</button>
+    <h3>পণ্যের তালিকা</h3>
+    <div id="products"></div>
+  </section>
+</main>
+
+<script type="module">
+import { createClient } from
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const SUPABASE_URL = 'https://werwpvmsltfpskfkcihu.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Wz_zq_8CA2pEih3UpDPafQ_r2NiNjzS';
+
+const status = document.getElementById('status');
+const loginBox = document.getElementById('loginBox');
+const panel = document.getElementById('panel');
+
+if (SUPABASE_URL.includes('PASTE_') ||
+    SUPABASE_KEY.includes('PASTE_')) {
+  status.textContent = 'প্রথমে Supabase URL ও Publishable key বসাও।';
+  document.getElementById('login').disabled = true;
+} else {
+  const supabase = createClient(sb_publishable_Wz_zq_8CA2pEih3UpDPafQ_r2NiNjzS);
+
+  function showStatus(message) {
+    status.textContent = message;
+  }
+
+  async function refresh() {
+    const { data, error } = await supabase
+      .from('products').select('*').order('id', {ascending:false});
+
+    if (error) return showStatus('পণ্য লোড হয়নি: ' + error.message);
+
+    const list = document.getElementById('products');
+    list.replaceChildren();
+
+    data.forEach(product => {
+      const item = document.createElement('div');
+      item.className = 'item';
+
+      const title = document.createElement('strong');
+      title.textContent = product.name;
+      item.append(title);
+
+      const price = document.createElement('p');
+      price.textContent = 'দাম: ৳' + product.price;
+      item.append(price);
+
+      if (product.image_url) {
+        const img = document.createElement('img');
+        img.src = product.image_url;
+        img.alt = product.name;
+        img.onerror = () => img.remove();
+        item.append(img);
+      }
+
+      const edit = document.createElement('button');
+      edit.textContent = 'নাম ও দাম পরিবর্তন';
+      edit.onclick = async () => {
+        const name = prompt('নতুন নাম:', product.name);
+        if (name === null || !name.trim()) return;
+        const value = prompt('নতুন দাম:', product.price);
+        if (value === null || value.trim() === '' ||
+            !Number.isFinite(Number(value)) || Number(value) < 0) {
+          return showStatus('সঠিক দাম লিখো।');
+        }
+        const { error } = await supabase.from('products')
+          .update({name: name.trim(), price: Number(value)})
+          .eq('id', product.id);
+        showStatus(error ? error.message : 'পণ্য আপডেট হয়েছে।');
+        if (!error) refresh();
+      };
+      item.append(edit);
+
+      const del = document.createElement('button');
+      del.className = 'delete';
+      del.textContent = 'পণ্য মুছো';
+      del.onclick = async () => {
+        if (!confirm('এই পণ্যটি মুছতে চাও?')) return;
+        const { error } = await supabase.from('products')
+          .delete().eq('id', product.id);
+        showStatus(error ? error.message : 'পণ্য মুছে ফেলা হয়েছে।');
+        if (!error) refresh();
+      };
+      item.append(del);
+      list.append(item);
+    });
+    showStatus('পণ্যের তালিকা আপডেট হয়েছে।');
+  }
+
+  async function updateView() {
+    const { data } = await supabase.auth.getSession();
+    const loggedIn = !!data.session;
+    loginBox.hidden = loggedIn;
+    panel.hidden = !loggedIn;
+    if (loggedIn) await refresh();
+  }
+
+  document.getElementById('login').onclick = async () => {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const { error } = await supabase.auth.signInWithPassword({email,password});
+    if (error) return showStatus('লগইন হয়নি: ' + error.message);
+    await updateView();
+  };
+
+  document.getElementById('add').onclick = async () => {
+    const name = document.getElementById('name').value.trim();
+    const price = Number(document.getElementById('price').value);
+    if (!name || document.getElementById('price').value === '' ||
+        !Number.isFinite(price) || price < 0) {
+      return showStatus('পণ্যের নাম ও সঠিক দাম দাও।');
+    }
+
+    const record = {
+      name,
+      price,
+      image_url: document.getElementById('image').value.trim() || null,
+      category: document.getElementById('category').value.trim() || null,
+      description: document.getElementById('description').value.trim() || null
+    };
+
+    const { error } = await supabase.from('products').insert(record);
+    if (error) return showStatus('পণ্য যোগ হয়নি: ' + error.message);
+
+    ['name','price','image','category','description'].forEach(id =>
+      document.getElementById(id).value = '');
+    showStatus('পণ্য যোগ হয়েছে।');
+    await refresh();
+  };
+
+  document.getElementById('logout').onclick = async () => {
+    await supabase.auth.signOut();
+    await updateView();
+    showStatus('লগআউট হয়েছে।');
+  };
+
+  supabase.auth.onAuthStateChange(() => {
+    setTimeout(updateView, 0);
+  });
+  updateView();
+}
+</script>
+</body>
+</html>
